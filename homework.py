@@ -158,5 +158,6 @@ def main():
             send_message(bot, message)
         time.sleep(RETRY_PERIOD)
 
+
 if __name__ == '__main__':
     main()
