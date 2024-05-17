@@ -31,15 +31,27 @@ HOMEWORK_VERDICTS = {
     'rejected': 'Работа проверена: у ревьюера есть замечания.'
 }
 
+logging.basicConfig(
+    format=('%(asctime)s - %(levelname)s - %(message)s - %(name)s'),
+    level=logging.DEBUG,
+)
+
 
 def check_tokens():
     """Проверяет доступность переменных окружения.
     Если отсутствует хотя бы одна переменная окружения,
     то продолжать работу бота нет смысла.
     """
-    assert PRACTICUM_TOKEN is not None
-    assert TELEGRAM_TOKEN is not None
-    assert TELEGRAM_CHAT_ID is not None
+    try:
+        if (PRACTICUM_TOKEN is None
+                or TELEGRAM_TOKEN is None
+                or TELEGRAM_CHAT_ID is None):
+            raise LookupError('Проблема с переменными окружения.')
+    except Exception as error:
+        logging.critical(
+            f'Проверка при проверке токенов {error}'
+        )
+        exit()
 
 
 def get_api_answer(timestamp):
@@ -52,13 +64,15 @@ def get_api_answer(timestamp):
         response = requests.get(ENDPOINT,
                                 headers=HEADERS,
                                 params={'from_date': timestamp})
-        if response.status_code != HTTPStatus.OK:
-            raise requests.HTTPError('Эндпоинт недоступен.')
-        else:
-            if isinstance(response.json(), dict):
-                return response.json()
-    except requests.RequestException():
-        raise requests.RequestException('Другой сбой при запросе к эндпоинту.')
+    except requests.RequestException() as error:
+        raise requests.HTTPError(
+            f'Проблема с запросом к эндпоинту {error}'
+        )
+
+    if response.status_code != HTTPStatus.OK:
+        raise requests.HTTPError('Код ответа не 200')
+    else:
+        return response.json()
 
 
 def check_response(response: dict):
@@ -79,7 +93,7 @@ def check_response(response: dict):
         raise TypeError('Значения ключей response имеют неправильный тип.')
 
     if not response['homeworks']:
-        return None
+        raise ValueError('Обновлений нет')
     else:
         for homework in response['homeworks']:
             if not isinstance(homework, dict):
@@ -118,114 +132,31 @@ def send_message(bot, message):
         )
         logging.debug('Сообщение успешно отправлено в Телеграмм')
     except Exception as error:
-        message = (f'Произошла ошибка при отправке сообщения'
-                   f' в Телеграмм: {error}')
-        logging.error(message)
+        logging.error(f'Ошибка при отправке в Телеграмм {error}')
 
 
 def main():
     """Основная логика работы бота."""
     bot = TeleBot(token=TELEGRAM_TOKEN)
-    timestamp = 0
-    # int(time.time())
+    timestamp = int(time.time())
 
-    logging.basicConfig(
-        format=('%(asctime)s - %(levelname)s - %(message)s - %(name)s'),
-        level=logging.DEBUG,
-    )
     logger = logging.getLogger(__name__)
     handler = logging.StreamHandler(stream=sys.stdout)
     logger.addHandler(handler)
 
-    step_error_status = {'step_0': True,
-                         'step_1': True,
-                         'step_2': True,
-                         'step_3': True}
-
-    # 0. Проверка переменных среды.
-    try:
-        check_tokens()
-    except Exception as error:
-        message = (
-            f'Отсутствие обязательных переменных '
-            f'окружения во время запуска бота: {error}'
-        )
-        logging.critical(message)
-        # send_message(bot, message)
-        step_error_status['step_0'] = False
-
-    while step_error_status['step_0'] is True:
-        # Шаг 1. Сделать запрос к API.
+    check_tokens()
+    while True:
         try:
             answer = get_api_answer(timestamp)
             logging.debug('Получен ответ от API')
-            step_error_status['step_1'] = True
-        except requests.HTTPError as error:
-            message = (f'Эндпоинт недоступен: {error}.')
-            logging.error(message)
-            if step_error_status['step_1'] is True:
-                send_message(bot, message)
-                step_error_status['step_1'] = False
-            time.sleep(RETRY_PERIOD)
-            continue
-        except requests.RequestException as error:
-            message = (f'Другие сбои при запросе к эндпоинту: {error}.')
-            logging.error(message)
-            if step_error_status['step_1'] is True:
-                send_message(bot, message)
-                step_error_status['step_1'] = False
-            time.sleep(RETRY_PERIOD)
-            continue
-        except Exception as error:
-            message = (f'Другие сбои: {error}.')
-            logging.error(message)
-            if step_error_status['step_1'] is True:
-                send_message(bot, message)
-                step_error_status['step_1'] = False
-            time.sleep(RETRY_PERIOD)
-            continue
-
-        # Шаг 2. Проверить ответ.
-        try:
             check_answer = check_response(answer)
-            if check_answer is not None:
-                logging.debug('Проверка полей прошла успешно,'
-                              ' есть обновления.')
-                step_error_status['step_2'] = True
-            else:
-                logging.debug('проверка прошла успешно, с'
-                              ' момента предыдущего запроса обновлений нет')
-                time.sleep(RETRY_PERIOD)
-                continue
-        except Exception as error:
-            message = (f'Нарушение структуры ответа API: {error}.')
-            logging.error(message)
-            if step_error_status['step_2'] is True:
-                send_message(bot, message)
-                step_error_status['step_2'] = False
-            time.sleep(RETRY_PERIOD)
-            continue
-
-        # Шаг 3. Если есть обновления — получить статус работы из обновления.
-        try:
             message = parse_status(check_answer)
-            logging.debug(message)
             send_message(bot, message)
-            step_error_status['step_3'] = True
         except Exception as error:
-            message = (f'Неожиданный статус домашней работы, '
-                       f'обнаруженный в ответе API {error}')
+            message = (f'Проблема: {error}')
             logging.error(message)
-            if step_error_status['step_3'] is True:
-                send_message(bot, message)
-                step_error_status['step_3'] = False
-            time.sleep(RETRY_PERIOD)
-            continue
-
-        #  После удачного прохождения всех шагов - подождать некоторое время
-        # и вернуться на шаг 1.
+            send_message(bot, message)
         time.sleep(RETRY_PERIOD)
-
 
 if __name__ == '__main__':
     main()
