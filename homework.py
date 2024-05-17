@@ -2,8 +2,6 @@ import logging
 import os
 import sys
 import time
-from datetime import datetime as dt
-from datetime import timedelta
 from http import HTTPStatus
 
 import requests
@@ -19,7 +17,6 @@ TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID', None)
 RETRY_PERIOD = 600
 ENDPOINT = 'https://practicum.yandex.ru/api/user_api/homework_statuses/'
 HEADERS = {'Authorization': f'OAuth {PRACTICUM_TOKEN}'}
-UNIX_START = dt(1970, 1, 1, 00, 00, 00)
 
 HOMEWORK_ATTRIBUTES = ('id',
                        'status',
@@ -33,15 +30,6 @@ HOMEWORK_VERDICTS = {
     'reviewing': 'Работа взята на проверку ревьюером.',
     'rejected': 'Работа проверена: у ревьюера есть замечания.'
 }
-
-
-def unix_time(time: str):
-    """Переводит строку со временем из ответа в формат юникс времени."""
-    return int(
-        timedelta.total_seconds(
-            dt.strptime(time, '%Y-%m-%dT%H:%M:%SZ') - UNIX_START
-        )
-    )
 
 
 def check_tokens():
@@ -101,15 +89,6 @@ def check_response(response: dict):
                     raise KeyError('Атрибутивный состав ответа'
                                    ' не соответствует ожиданиям.')
         return response['homeworks'][0]
-        # last_homework = response['homeworks'][0]
-        # last_homework_date_updated_unix_time = unix_time(
-        #     last_homework['date_updated']
-        # )
-        # previous_request_time = response['current_date'] - RETRY_PERIOD
-        # if last_homework_date_updated_unix_time <= previous_request_time:
-        #     return None
-        # else:
-        #     return last_homework
 
 
 def parse_status(homework):
@@ -147,7 +126,8 @@ def send_message(bot, message):
 def main():
     """Основная логика работы бота."""
     bot = TeleBot(token=TELEGRAM_TOKEN)
-    timestamp = int(time.time())
+    timestamp = 0
+    # int(time.time())
 
     logging.basicConfig(
         format=('%(asctime)s - %(levelname)s - %(message)s - %(name)s'),
