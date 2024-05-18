@@ -156,6 +156,7 @@ def main():
                   logging.FileHandler(__file__ + '.log', encoding='UTF-8'))
     )
     old_statuses_of_homeworks = {}
+    old_error_message = ''
     while True:
         try:
             answer = get_api_answer(timestamp)
@@ -174,9 +175,11 @@ def main():
                     send_message(bot, message)
                 old_statuses_of_homeworks[name] = status
         except Exception as error:
-            message = (f'{error}')
-            logging.error(message)
-            send_message(bot, message)
+            error_message = (f'{error}')
+            logging.error(error_message)
+            if error_message != old_error_message:
+                if send_message(bot, error_message):
+                    old_error_message = error_message
         finally:
             time.sleep(RETRY_PERIOD)
 
