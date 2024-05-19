@@ -144,8 +144,6 @@ def main():
     check_tokens()
     bot = TeleBot(token=TELEGRAM_TOKEN)
     timestamp = int(time.time())
-
-    # old_statuses_of_homeworks = {}
     old = ''
     while True:
         try:
@@ -159,10 +157,11 @@ def main():
             message = parse_status(homework)
             if message != old and send_message(bot, message):
                 old = message
-                timestamp = int(time.time())
+                timestamp = answer.get('current_date',
+                                       int(time.time))
         except Exception as error:
             error_message = (f'{error}')
-            logging.error(error_message)
+            logging.error(error_message, exc_info=True)
             if error_message != old and send_message(bot, error_message):
                 old = error_message
         finally:
