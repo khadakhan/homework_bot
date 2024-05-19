@@ -43,12 +43,12 @@ def check_tokens():
               ('TELEGRAM_TOKEN', TELEGRAM_TOKEN),
               ('TELEGRAM_CHAT_ID', TELEGRAM_CHAT_ID))
     check_result = True
-    for token in tokens:
-        if not token[1]:
-            logging.critical(f'Отсутствует токен {token[0]}')
+    for name, token in tokens:
+        if not token:
+            logging.critical(f'Отсутствует токен {name}')
             check_result = False
     if not check_result:
-        raise LookupError('Проверьте доступность переменных окружения')
+        raise KeyError('Проверьте доступность переменных окружения')
 
 
 def get_api_answer(timestamp):
@@ -62,22 +62,19 @@ def get_api_answer(timestamp):
         'headers': HEADERS,
         'params': {'from_date': timestamp}
     }
+    logging.debug(
+        'Отправляем запрос к url={url} c headers={headers}'
+        ' и params={params}'.format(**request_get_args)
+    )
     try:
-        logging.debug(
-            f'Отправляем запрос к url={request_get_args["url"]}'
-            f' c headers={request_get_args["headers"]}'
-            f' и params={request_get_args["params"]}'
-        )
         response = requests.get(
-            url=request_get_args['url'],
-            headers=request_get_args['headers'],
-            params=request_get_args['params']
+            **request_get_args
         )
     except requests.RequestException as error:
         raise ConnectionError(
-            f'Проблема с запросом к url={request_get_args["url"]}'
-            f' c headers={request_get_args["headers"]}'
-            f' и params={request_get_args["params"]}: {error}'
+            'Проблема с запросом к url={url} c headers={headers}'
+            ' и params={params}: {error}'.format(**request_get_args,
+                                                 error=error)
         )
 
     if response.status_code != HTTPStatus.OK:
@@ -148,15 +145,8 @@ def main():
     bot = TeleBot(token=TELEGRAM_TOKEN)
     timestamp = int(time.time())
 
-    logging.basicConfig(
-        format=('%(asctime)s - %(levelname)s - %(message)s'
-                ' - %(name)s - %(lineno)d'),
-        level=logging.DEBUG,
-        handlers=(logging.StreamHandler(sys.stdout),
-                  logging.FileHandler(__file__ + '.log', encoding='UTF-8'))
-    )
-    old_statuses_of_homeworks = {}
-    old_error_message = ''
+    # old_statuses_of_homeworks = {}
+    old = ''
     while True:
         try:
             answer = get_api_answer(timestamp)
@@ -165,24 +155,26 @@ def main():
             if not homeworks:
                 logging.info('Домашних заданий нет')
                 continue
-            for homework in homeworks:
-                message = parse_status(homework)
-                name = homework['homework_name']
-                status = homework['status']
-                if ((name in old_statuses_of_homeworks
-                        and status != old_statuses_of_homeworks[name])
-                        or (name not in old_statuses_of_homeworks)):
-                    send_message(bot, message)
-                old_statuses_of_homeworks[name] = status
+            homework = homeworks[0]
+            message = parse_status(homework)
+            if message != old and send_message(bot, message):
+                old = message
+                timestamp = int(time.time())
         except Exception as error:
             error_message = (f'{error}')
             logging.error(error_message)
-            if error_message != old_error_message:
-                if send_message(bot, error_message):
-                    old_error_message = error_message
+            if error_message != old and send_message(bot, error_message):
+                old = error_message
         finally:
             time.sleep(RETRY_PERIOD)
 
 
 if __name__ == '__main__':
+    logging.basicConfig(
+        format=('%(asctime)s - %(levelname)s - %(message)s'
+                ' - %(name)s - %(lineno)d'),
+        level=logging.DEBUG,
+        handlers=(logging.StreamHandler(sys.stdout),
+                  logging.FileHandler(__file__ + '.log', encoding='UTF-8'))
+    )
     main()
