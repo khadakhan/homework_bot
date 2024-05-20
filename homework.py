@@ -158,7 +158,7 @@ def main():
             if message != old and send_message(bot, message):
                 old = message
                 timestamp = answer.get('current_date',
-                                       int(time.time))
+                                       timestamp)
         except Exception as error:
             error_message = (f'{error}')
             logging.error(error_message, exc_info=True)
